@@ -3,12 +3,14 @@
 #include <windows.h> // Sleep() for delaying execution
 #include <cstdlib> // For rand()
 #include <vector> // dodanie duchów
+#include <string>
 
 using namespace std;
 
 const int width = 40;
 const int height = 20;
 const int game_speed = 300;
+const int eat_time = 50;// Ustawienie czasu trwania mocy
 
 enum Direction { STOP = 0, LEFT, RIGHT, UP, DOWN };
 enum Difficulty { EASY, MEDIUM, HARD };
@@ -19,16 +21,40 @@ public:
     Entity(int startX, int startY) : x(startX), y(startY) {}
 };
 
+class Fruit : public Entity {
+public:
+    bool isSpecial; // owoc pozwala na zjadanie duchów
+    Fruit(int startX, int startY, bool special = false) : Entity(startX, startY), isSpecial(special) {}
+    void Respawn(char map[height][width], vector<Fruit>& fruits, bool hasFruit[height][width]) {
+        int newX, newY;
+        bool special;
+
+        do {
+            newX = 1 + rand() % (width - 2); // Unikamy umieszczania owoców na krawędziach
+            newY = 1 + rand() % (height - 2);
+            special = (rand() % 5 == 0); // 1 na 5
+
+        } while (map[newY][newX] == '#' || hasFruit[newY][newX]); // Jeśli owoc nie może być na tym miejscu
+
+        // Tworzenie nowego owocu i dodawanie do wektora
+        fruits.push_back(Fruit(newX, newY, special));
+        hasFruit[newY][newX] = true;
+    }
+};
+
 class PacMan : public Entity {
 public:
     Direction dir;
     char symbol;
     int score;
     int lives; //liczba żyć
+    bool powerUpActive; // Nowa zmienna określająca, czy PacMan może zjadać duchy
+    int powerUpTimer;   // Czas trwania efektu zjedzenia specjalnego owocu
+    vector<Fruit> fruits;
 
-    PacMan(int startX, int startY, char sym) : Entity(startX, startY), dir(STOP), symbol(sym), score(0), lives(3) {}
+    PacMan(int startX, int startY, char sym) : Entity(startX, startY), dir(STOP), symbol(sym), score(0), lives(3), powerUpActive(false), powerUpTimer(0) {}
 
-    void Move(char map[height][width], bool hasFruit[height][width], int& remainingFruits) {
+    void Move(char map[height][width], bool hasFruit[height][width], int& remainingFruits, vector<Fruit>& fruits) {
         int nextX = x;
         int nextY = y;
 
@@ -44,18 +70,42 @@ public:
         if (nextX >= 0 && nextX < width && nextY >= 0 && nextY < height && map[nextY][nextX] != '#') {
             x = nextX;
             y = nextY;
+           
+            //sprawdzenie zjedzenia owocu      
+            for (auto it = fruits.begin(); it != fruits.end(); ++it) {
+                if (it->x == x && it->y == y) {
+                    if (it->isSpecial) {
+                        //system("cls");
+                        powerUpActive = true;
+                        powerUpTimer = eat_time; 
+                    }
+                    fruits.erase(it); // Usuń owoc z listy
+                    break;
+                }
+                if (hasFruit[y][x]) {
+                    score += 1;
+                    hasFruit[y][x] = false;
+                    remainingFruits--;
 
-            //sprawdzenie zjedzenia owocu
-            if (hasFruit[y][x]) {
-                score += 10;
-                hasFruit[y][x] = false;
-                remainingFruits--; // Zmniejszenie liczby pozostałych owoców
+                }
             }
+           
         }
         else {
-            // zatrzymanie jeśli zderzenie
-            dir = STOP;
+            //dir = STOP;
         }
+
+        // Odliczanie czasu trwania efektu specjalnego owocu
+        if (powerUpActive) {
+            powerUpTimer--;
+            if (powerUpTimer == 0) {
+                powerUpActive = false;
+            }
+        }
+    }
+    
+    int GetPowerUpTimeLeft() const { // metoda zwracajaća czas mocy zjdania duchów
+        return powerUpTimer;
     }
 };
 
@@ -117,18 +167,6 @@ public:
     }
 };
 
-class Fruit : public Entity {
-public:
-    Fruit(int startX, int startY) : Entity(startX, startY) {}
-    void Respawn(char map[height][width]) {
-        do {
-            x = 1 + rand() % (width - 2);
-            y = 1 + rand() % (height - 2);
-        } while (map[y][x] != ' ');
-    }
-};
-
-
 class Controller {
 public:
     void GetInput(PacMan& pacman1, PacMan& pacman2) {
@@ -152,7 +190,7 @@ class Game {
 private:
     PacMan pacman1;
     PacMan pacman2;
-    Fruit fruit;
+    vector<Fruit> fruit;
     Controller controller;
     vector<Ghost> ghosts; // Vector to manage ghosts
     int sharedScore;
@@ -166,16 +204,6 @@ private:
     int remainingFruits; // Liczba pozostałych owoców
 
 public:
-
-    Game(bool isSinglePlayer, bool isSimpleMap, Difficulty difficultyLevel)
-        : pacman1(width / 2, height / 2, 'P'), pacman2(width / 2 + 1, height / 2, 'Q'),
-        fruit(0, 0), sharedScore(0), singlePlayer(isSinglePlayer), simpleMap(isSimpleMap), difficultyLevel(difficultyLevel), remainingFruits(0) {
-        SetDifficulty(difficultyLevel); // Ustawienie prędkości gry na podstawie poziomu trudności
-        SetupMap();// Initializacja mapy ze ścianami
-        ghosts.emplace_back(5, 5, 'G', ghostSpeed); // dodanie ducha jako nowy element wektora // zmienne to pozycja początkowa x,y , symbol ducha, szybkość ducha
-        ghosts.emplace_back(10, 10, 'g', ghostSpeed);
-        //ghosts.emplace_back(5, 5, 'g', ghostSpeed);
-    }
 
     void SetupMap() {
         if (simpleMap) {
@@ -233,16 +261,33 @@ public:
     }
     
     void Setup() {
+        SetupMap();
         pacman1.x = width / 2;
         pacman1.y = height / 2-1;
         pacman2.x = width / 2 + 1;
         pacman2.y = height / 2-1;
-        fruit.Respawn(map);
         pacman1.score = 0;
         pacman2.score = 0;
         sharedScore = 0;
         pacman1.dir = STOP;
         pacman2.dir = STOP;
+
+        // Generowanie owoców
+        fruit.clear();
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (map[y][x] != '#') {  // jeśli to nie ściana
+                    bool isSpecial = (rand() % 100 < 5);  // 5% szans na specjalny owoc
+                    Fruit newFruit(x, y, isSpecial);
+                    fruit.push_back(newFruit);
+                    hasFruit[y][x] = true;
+                    remainingFruits++;
+                }else {
+                    hasFruit[y][x] = false;
+                }
+            }
+        }
+        
 
         vector<pair<int, int>> corners = {
         {1, 1},                      // Lewy górny róg
@@ -263,6 +308,16 @@ public:
             ghost.dir = static_cast<Direction>(rand() % 4 + 1); // ustawienie losowego kierunku
             ghost.speed = ghostSpeed;
         }
+    }
+
+    Game(bool isSinglePlayer, bool isSimpleMap, Difficulty difficultyLevel)
+        : pacman1(width / 2, height / 2, 'P'), pacman2(width / 2 + 1, height / 2, 'Q'),
+        fruit(), sharedScore(0), singlePlayer(isSinglePlayer), simpleMap(isSimpleMap), difficultyLevel(difficultyLevel), remainingFruits(0) {
+        SetDifficulty(difficultyLevel); // Ustawienie prędkości gry na podstawie poziomu trudności
+        ghosts.emplace_back(5, 5, 'G', ghostSpeed); // dodanie ducha jako nowy element wektora // zmienne to pozycja początkowa x,y , symbol ducha, szybkość ducha
+        ghosts.emplace_back(10, 10, 'G', ghostSpeed);
+        ghosts.emplace_back(20, 20, 'G', ghostSpeed);
+        //ghosts.emplace_back(5, 5, 'g', ghostSpeed);
     }
 
     void Draw() {
@@ -289,9 +344,17 @@ public:
                         }
                     }
                     // Jeśli nie ma ducha na tej pozycji, sprawdzamy, czy jest owoc
+
                     if (!isGhostHere) {
                         if (hasFruit[i][j]) {
-                            cout << '.';
+                            bool isSpecial = false;
+                            for (const auto& f : fruit) {
+                                if (f.x == j && f.y == i) {
+                                    isSpecial = f.isSpecial;
+                                    break;
+                                }
+                            }
+                            cout << (isSpecial ? '@' : '.');
                         }
                         else {
                             cout << map[i][j];
@@ -301,11 +364,15 @@ public:
             }
             cout << endl;
         }
+        result(true);
+        
+    }
 
+    void result(bool check) {
         // Wyświetlanie wyników
-        cout << "PacMan1 Score: " << pacman1.score << " zycia: " << pacman1.lives << endl;
+        cout << "PacMan1 Score: " << pacman1.score<< " zycia: " << pacman1.lives << (check ? " Czas mocy: " + to_string(pacman1.GetPowerUpTimeLeft()) : "")<< endl;
         if (!singlePlayer) {
-            cout << "PacMan2 Score: " << pacman2.score << " zycia: " << pacman2.lives << endl;
+            cout << "PacMan2 Score: " << pacman2.score << " zycia: " << pacman2.lives << (check ? " Czas mocy: " + to_string(pacman2.GetPowerUpTimeLeft()) : "") << endl;
             sharedScore = pacman1.score + pacman2.score;
         }
         else {
@@ -320,9 +387,9 @@ public:
     }
 
     void Logic() {
-        pacman1.Move(map,hasFruit, remainingFruits);
+        pacman1.Move(map, hasFruit, remainingFruits, fruit);
         if (!singlePlayer) {
-            pacman2.Move(map, hasFruit, remainingFruits);
+            pacman2.Move(map, hasFruit, remainingFruits, fruit);
         }
 
         for (auto& ghost : ghosts) {
@@ -331,74 +398,74 @@ public:
                 ghost.Move(map, pacman2); // Duchy ścigają drugiego gracza
             }
         }
+
         // Sprawdzenie kolizji z duchem
         CheckCollision();
 
         // Sprawdzenie wygranej
         if (remainingFruits <= 0) {
             system("cls");
-            cout << "Congratulations! You've won the game!" << endl;
-            cout << "PacMan1 Score: " << pacman1.score << endl;
-            if (!singlePlayer) {
-                cout << "PacMan2 Score: " << pacman2.score << endl; 
-                sharedScore = pacman1.score + pacman2.score;
-            }
-            else {
-                sharedScore = pacman1.score;
-            }
-            cout << "Shared Score: " << sharedScore << endl;
-            Sleep(1000);
+            result(false);
             exit(0);
         }
     }
+    void GameOver() {
+        
+        system("cls");
+        result(false);
+        Sleep(500);
+        exit(0);
+    }
 
     void CheckCollision() {
-        // Kolizja PacMana z duchami
-        for (const Ghost& ghost : ghosts) {
-            if ((pacman1.x == ghost.x && pacman1.y == ghost.y) || (pacman2.x == ghost.x && pacman2.y == ghost.y)) {
-                if (pacman1.x == ghost.x && pacman1.y == ghost.y) {
+        for (auto& ghost : ghosts) {
+            // Sprawdzanie kolizji PacMana1 z duchem
+            if (pacman1.x == ghost.x && pacman1.y == ghost.y) {
+                if (pacman1.powerUpActive) {
+                    // PacMan1 ma aktywną moc - zjada ducha
+                    ghost.x = 1 + rand() % (width - 2);
+                    ghost.y = 1 + rand() % (height - 2);
+                    pacman1.score += 100; // Nagroda za zjedzenie ducha
+                }
+                else {
+                    // PacMan1 traci życie
                     pacman1.lives--;
                     if (pacman1.lives <= 0) {
-                        system("cls");
-                        cout << "PacMan1 Score: " << pacman1.score << endl;
-                        if (!singlePlayer) {
-                            cout << "PacMan2 Score: " << pacman2.score << endl;
-                            sharedScore = pacman1.score + pacman2.score;
-                        }
-                        else {
-                            sharedScore = pacman1.score;
-                        }
-                        cout << "Shared Score: " << sharedScore << endl;
-                        Sleep(1000);
-                        exit(0);
+                        // Game Over dla PacMana1
+                        GameOver();
                     }
-                    pacman1.x = width / 2;
-                    pacman1.y = height / 2;
+                    else {
+                        // Reset pozycji PacMana1
+                        pacman1.x = width / 2;
+                        pacman1.y = height / 2;
+                    }
                 }
-                if (pacman2.x == ghost.x && pacman2.y == ghost.y) {
+            }
+
+            // Sprawdzanie kolizji PacMana2 z duchem (jeśli gra w trybie wieloosobowym)
+            if (!singlePlayer && pacman2.x == ghost.x && pacman2.y == ghost.y) {
+                if (pacman2.powerUpActive) {
+                    // PacMan2 ma aktywną moc - zjada ducha
+                    ghost.x = 1 + rand() % (width - 2);
+                    ghost.y = 1 + rand() % (height - 2);
+                    pacman2.score += 100; // Nagroda za zjedzenie ducha
+                }
+                else {
+                    // PacMan2 traci życie
                     pacman2.lives--;
                     if (pacman2.lives <= 0) {
-                        system("cls");
-                        cout << "Gracz 2 - Przegrał! Game Over!" << endl;
-                        cout << "PacMan1 Score: " << pacman1.score << endl;
-                        if (!singlePlayer) {
-                            cout << "PacMan2 Score: " << pacman2.score << endl;
-                            sharedScore = pacman1.score + pacman2.score;
-                        }
-                        else {
-                            sharedScore = pacman1.score;
-                        }
-                        cout << "Shared Score: " << sharedScore << endl;
-                        Sleep(1000);
-                        exit(0);
+                        // Game Over dla PacMana2
+                        GameOver();
                     }
-                    pacman2.x = width / 2 + 1;
-                    pacman2.y = height / 2;
+                    else {
+                        // Reset pozycji PacMana2
+                        pacman2.x = width / 2 + 1;
+                        pacman2.y = height / 2;
+                    }
                 }
             }
         }
     }
-
 
     void Run() {
         Setup();
@@ -468,6 +535,37 @@ public:
             difficultyLevel = EASY;
             break;
         }
+
+        // informacje o sterowaniu
+        system("cls");  
+        cout << "Instrukcja " << endl << endl;
+        cout << "Gre mozna zakonczyc w dowolnym momecie naciskajac: x " << endl;
+        cout << "Przeciwnicy to: G i g" << endl;
+        cout << "Niueprzekraczalna bariera to: #" << endl;
+        cout << "Punkty ktore musisz zebrac to: ." << endl;
+        cout << "Owoce specjalne pozwalajace na zjadanie przeciwnikow to: @" << endl;
+        cout << "Owoce specjalne pozwalajace na zjadanie tylko w ograniczanym czasie ktorego czas jest sygnalizowany na dole ekranu zaraz za punktami" << endl;
+        cout << endl; cout << endl;
+
+        cout << "Postac ma symbol: P" << endl;
+        cout << "Sterowanie to:" << endl;
+        cout << "Gora: w" << endl;
+        cout << "Dol: s" << endl;
+        cout << "Lewo: a" << endl;
+        cout << "Prawo: d" << endl;
+        cout << endl;
+        
+        if (isSinglePlayer==false) {
+            cout << "Postac ma symbol: Q" << endl;
+            cout << "Sterowanie to:" << endl;
+            cout << "Gora: i" << endl;
+            cout << "Dol: k" << endl;
+            cout << "Lewo: j" << endl;
+            cout << "Prawo: l" << endl;
+            cout << endl;
+        }
+        cout<<" Nacisnij dowolny klawisz aby przejsc dalej" << endl;
+        choice = _getch();
     }
 
     void SetDifficulty(Difficulty level) {
