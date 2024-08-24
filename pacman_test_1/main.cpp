@@ -91,9 +91,6 @@ public:
             }
            
         }
-        else {
-            //dir = STOP;
-        }
 
         // Odliczanie czasu trwania efektu specjalnego owocu
         if (powerUpActive) {
@@ -114,9 +111,10 @@ public:
     Direction dir;
     char symbol;
     int speed; // szybkość duchów w zależnośći od poziomu
+    bool isg;  // decyduje czy duch jest małym g czy dużym w zależności od super owocu
 
     Ghost(int startX, int startY, char sym, int spd)
-        : Entity(startX, startY), dir(STOP), symbol(sym), speed(spd) {}
+        : Entity(startX, startY), dir(STOP), symbol(sym), speed(spd),  isg(false) {}
 
     void Move(char map[height][width], const PacMan& pacman) { // metoda losowa z priorytetem
         int nextX = x;
@@ -164,6 +162,10 @@ public:
             x = nextX;
             y = nextY;
         }
+    }
+
+    void setisg(bool isPowerUpActive) { // metoda pozwala na zmiane symbolu ducha w zależności od zjedzenia superowocu
+        symbol = isPowerUpActive ? 'g' : 'G';
     }
 };
 
@@ -397,6 +399,7 @@ public:
             if (!singlePlayer) {
                 ghost.Move(map, pacman2); // Duchy ścigają drugiego gracza
             }
+            ghost.setisg(pacman1.powerUpActive || (pacman2.powerUpActive && !singlePlayer));
         }
 
         // Sprawdzenie kolizji z duchem
@@ -431,7 +434,6 @@ public:
                     // PacMan1 traci życie
                     pacman1.lives--;
                     if (pacman1.lives <= 0) {
-                        // Game Over dla PacMana1
                         GameOver();
                     }
                     else {
@@ -442,7 +444,7 @@ public:
                 }
             }
 
-            // Sprawdzanie kolizji PacMana2 z duchem (jeśli gra w trybie wieloosobowym)
+            // Sprawdzanie kolizji PacMana2 z duchem 
             if (!singlePlayer && pacman2.x == ghost.x && pacman2.y == ghost.y) {
                 if (pacman2.powerUpActive) {
                     // PacMan2 ma aktywną moc - zjada ducha
@@ -454,7 +456,6 @@ public:
                     // PacMan2 traci życie
                     pacman2.lives--;
                     if (pacman2.lives <= 0) {
-                        // Game Over dla PacMana2
                         GameOver();
                     }
                     else {
@@ -594,12 +595,12 @@ public:
 int main() {
     srand(time(0));
 
-    bool isSinglePlayer = true;  // Inicjalizacja zmiennej domyślną wartością
-    bool isSimpleMap = true;     // Inicjalizacja zmiennej domyślną wartością
+    bool isSinglePlayer = true;  
+    bool isSimpleMap = true;     
     Difficulty difficultyLevel = EASY;
 
-    Game game(isSinglePlayer, isSimpleMap, difficultyLevel); // Wywołanie ShowMenu przed utworzeniem obiektu Game
-    game.ShowMenu(isSinglePlayer, isSimpleMap); // Teraz ShowMenu ustawi te wartości
+    Game game(isSinglePlayer, isSimpleMap, difficultyLevel); 
+    game.ShowMenu(isSinglePlayer, isSimpleMap); 
 
     game = Game(isSinglePlayer, isSimpleMap, difficultyLevel);
 
