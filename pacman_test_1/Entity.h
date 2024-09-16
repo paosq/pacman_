@@ -7,8 +7,6 @@ public:
 
     Entity(int startX, int startY) : x(startX), y(startY) {}
     virtual ~Entity() = default;
-
-    // Mo¿esz dodaæ inne metody, które bêd¹ wspólne dla wszystkich encji
 };
 
 #endif // ENTITY_H

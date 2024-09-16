@@ -17,6 +17,7 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
+
     Game::Game(bool isSinglePlayer, bool isSimpleMap, Difficulty difficultyLevel, bool ispodglad_gry)
         : pacman1(width / 2, height / 2, 'P'), pacman2(width / 2 + 1, height / 2, 'Q'),
         fruit(), sharedScore(0), singlePlayer(isSinglePlayer), simpleMap(isSimpleMap), difficultyLevel(difficultyLevel), podglad_gry(ispodglad_gry), remainingFruits(0) {
@@ -454,8 +455,9 @@
 
         while (totalBytesSent < gameState.size()) {
             int bytesSent = send(clientSocket, gameState.c_str() + totalBytesSent, bytesRemaining, 0);
+            //std::cout << "Blad wysylania stanu gry! Kod bledu: " <<
             if (bytesSent == SOCKET_ERROR) {
-                std::cerr << "Blad wysylania stanu gry! Kod bledu: " << WSAGetLastError() << std::endl;
+                std::cout << "Blad wysylania stanu gry! Kod bledu: " << WSAGetLastError() << std::endl;
                 return;
             }
             totalBytesSent += bytesSent;
@@ -514,13 +516,12 @@
         handler.sendMessages();
         */
         while (true) {
-            std::this_thread::sleep_for(std::chrono::seconds(1)); //  opóŸnienia ( 1 sekunda) miêdzy wysy³aniem stanu gry
+            std::this_thread::sleep_for(std::chrono::seconds(1)); // opóŸnienia (np. 1 sekunda) miêdzy wysy³aniem stanu gry
             game.sendGameState(clientSocket);
         }
 
         //if (receiverThread.joinable()) receiverThread.join();
-        // 
-        // Po zakoñczeniu zamykamy w¹tek
+        // Po zakoñczeniu zamykam w¹tek
         closesocket(clientSocket);
         std::cout << "Klient roz³¹czony." << std::endl;
     }
@@ -530,4 +531,14 @@
             closesocket(serverSocket);
             WSACleanup();
         }
+    }
+
+#include <thread>
+#include <mutex>
+
+    std::mutex gameStateMutex; // Mutex do synchronizacji dostêpu do stanu gry
+
+    void sendGameStateThread(Game* game, SOCKET clientSocket) {
+        std::lock_guard<std::mutex> lock(gameStateMutex);
+        game->sendGameState(clientSocket);
     }
